@@ -32,8 +32,8 @@ nRooms = numel(roomNames);
 paramLabels = {'T20', 'T30', 'D50', 'C50', 'D80', 'C80', 'Ts'};
 nParams     = numel(paramLabels);
 
-% Composite score: D50 (speech intelligibility) + T20 (reverberation penalty)
-weights = struct('D50', 0.60, 'T20', 0.40);
+% Composite score: D50 + T20 penalty + LAeq (background noise)
+weights = struct('D50', 0.40, 'T20', 0.25, 'LAeq', 0.35);
 T20_optimal = 0.7;   % [s] target for lecture halls
 
 alpha = 0.05;
@@ -74,6 +74,24 @@ end
 
 nTotal = numel(groupIdx);
 fprintf('  %d measurements across %d rooms.\n\n', nTotal, nRooms);
+
+% --- Load LAeq from room-level metadata ---
+paths.raw = fullfile('.', 'data', 'raw');
+LAeq = NaN(1, nRooms);
+for ri = 1:nRooms
+    metaFile = fullfile(paths.raw, roomNames{ri}, [roomNames{ri}, '_meta.json']);
+    if isfile(metaFile)
+        meta = jsondecode(fileread(metaFile));
+        if isfield(meta, 'LAeq')
+            LAeq(ri) = meta.LAeq;
+        end
+    end
+end
+if any(isnan(LAeq))
+    warning('LAeq missing for rooms: %s', ...
+            strjoin(roomNames(isnan(LAeq)), ', '));
+end
+fprintf('  LAeq loaded: %.1f – %.1f dB(A)\n\n', min(LAeq), max(LAeq));
 
 % Position index (for blocked design)
 posNames = unique(posLabel);
@@ -167,11 +185,17 @@ end
 T20m = [roomStats.T20_mean];
 D50m = [roomStats.D50_mean];
 
-% Z-scores oriented so higher = better for speech
-z_D50 = zscore_safe(D50m);                      % higher D50 is better
-z_T20 = zscore_safe(-abs(T20m - T20_optimal));   % closer to optimal is better
+% Store LAeq in roomStats
+for ri = 1:nRooms
+    roomStats(ri).LAeq = LAeq(ri);
+end
 
-composite = weights.D50 * z_D50 + weights.T20 * z_T20;
+% Z-scores oriented so higher = better for speech
+z_D50  = zscore_safe(D50m);                      % higher D50 is better
+z_T20  = zscore_safe(-abs(T20m - T20_optimal));   % closer to optimal is better
+z_LAeq = zscore_safe(-LAeq);                      % lower noise is better
+
+composite = weights.D50 * z_D50 + weights.T20 * z_T20 + weights.LAeq * z_LAeq;
 
 % Rank: 1 = best
 [~, rankOrder] = sort(composite, 'descend');
@@ -181,11 +205,15 @@ ranks(rankOrder) = 1:nRooms;
 for ri = 1:nRooms
     roomStats(ri).z_D50     = z_D50(ri);
     roomStats(ri).z_T20     = z_T20(ri);
+    roomStats(ri).z_LAeq    = z_LAeq(ri);
     roomStats(ri).composite = composite(ri);
     roomStats(ri).rank      = ranks(ri);
 end
 
 % --- Composite uncertainty (error propagation from blocked model) ---
+% Note: LAeq is a single value per room (no within-room replicates), so it
+% contributes zero estimation variance.  The CI reflects only D50 and T20
+% uncertainty from the blocked design.
 % Build data matrices: nRooms x nPos
 D50_mat = NaN(nRooms, nPos);
 T20_mat = NaN(nRooms, nPos);
@@ -234,19 +262,20 @@ end
 fprintf('\n================================================\n');
 fprintf('  SPEECH-QUALITY RANKING\n');
 fprintf('================================================\n');
-fprintf('Weights: D50 = %.0f%%,  T20 dev. from %.1f s = %.0f%%\n', ...
-        weights.D50*100, T20_optimal, weights.T20*100);
-fprintf('Error model: two-way additive (room + position), df = %d\n\n', df_error);
+fprintf('Weights: D50 = %.0f%%,  T20 dev. from %.1f s = %.0f%%,  LAeq = %.0f%%\n', ...
+        weights.D50*100, T20_optimal, weights.T20*100, weights.LAeq*100);
+fprintf('Error model: two-way additive (room + position), df = %d\n', df_error);
+fprintf('Note: CI reflects D50/T20 uncertainty only (LAeq is a single measurement)\n\n');
 
-fprintf('%-5s  %-16s  %6s  %6s  %6s  %6s  %8s  %7s\n', ...
-        'Rank', 'Room', 'T20', 'D50', 'z_T20', 'z_D50', 'Score', '95%CI');
-fprintf('%s\n', repmat('-', 1, 72));
+fprintf('%-5s  %-16s  %6s  %6s  %7s  %6s  %6s  %7s  %8s  %7s\n', ...
+        'Rank', 'Room', 'T20', 'D50', 'LAeq', 'z_T20', 'z_D50', 'z_LAeq', 'Score', '95%CI');
+fprintf('%s\n', repmat('-', 1, 88));
 
 for k = 1:nRooms
     ri = rankOrder(k);
-    fprintf('%-5d  %-16s  %5.3f  %5.3f  %+5.2f  %+5.2f  %+7.3f  +/-%.3f\n', ...
-            k, roomNames{ri}, T20m(ri), D50m(ri), ...
-            z_T20(ri), z_D50(ri), composite(ri), ...
+    fprintf('%-5d  %-16s  %5.3f  %5.3f  %6.1f  %+5.2f  %+5.2f  %+6.2f  %+7.3f  +/-%.3f\n', ...
+            k, roomNames{ri}, T20m(ri), D50m(ri), LAeq(ri), ...
+            z_T20(ri), z_D50(ri), z_LAeq(ri), composite(ri), ...
             roomStats(ri).composite_ci);
 end
 
@@ -292,8 +321,10 @@ for k = 1:nRooms
     out.ranking(k).room            = roomNames{ri};
     out.ranking(k).T20_mean        = T20m(ri);
     out.ranking(k).D50_mean        = D50m(ri);
+    out.ranking(k).LAeq            = LAeq(ri);
     out.ranking(k).z_T20           = z_T20(ri);
     out.ranking(k).z_D50           = z_D50(ri);
+    out.ranking(k).z_LAeq          = z_LAeq(ri);
     out.ranking(k).composite_score = composite(ri);
     out.ranking(k).composite_ci    = roomStats(ri).composite_ci;
 end

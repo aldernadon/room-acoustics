@@ -22,14 +22,15 @@
 
 **Left side:** Diagram of a room impulse response (direct sound, early reflections, reverberant tail). Use the IR panel from one of the `plot_ir` figures.
 
-**Right side:** The two parameters the audience needs:
+**Right side:** The three parameters the audience needs:
 
 - **D50** — fraction of energy in first 50 ms (higher = clearer speech)
 - **T20** — reverberation time (too long = muddy, too short = dead; optimal ~0.7 s)
+- **LAeq** — background noise level (lower = better; ANSI standard: ≤ 35 dB(A) for classrooms)
 
-One line: "These are standardized metrics from ISO 3382."
+One line: "D50 and T20 are standardized metrics from ISO 3382. LAeq is the standard measure of background noise."
 
-Don't define all 7 parameters — D50 and T20 are sufficient to follow the rest of the talk.
+Don't define all 7 acoustic parameters — D50, T20, and LAeq are sufficient to follow the rest of the talk.
 
 ## Slide 4 — Rooms Measured (0.75 min)
 
@@ -61,9 +62,9 @@ Equipment (3 bullets max):
 - Portable powered speaker
 - Laptop running MATLAB
 
-Protocol: room empty, doors closed, same equipment for all rooms.
+Protocol: room empty, doors closed, same equipment for all rooms. Background noise (LAeq) measured per room via phone sensor.
 
-Mic limitation (one line): "Cardioid USB mic — not ideal, but consistent across all rooms, so results are internally comparable."
+Mic limitation (one line): "Cardioid USB mic (76 dB SNR) — not ideal, but consistent across all rooms, so results are internally comparable. Room noise, not mic self-noise, limits our dynamic range."
 
 **Transition:** "With this setup, we recorded 54 measurements total. Here's how we processed them."
 
@@ -143,8 +144,8 @@ State the result and move on — don't linger on statistics.
 
 Walk through:
 
-- Composite score: 60% D50 + 40% T20 penalty from 0.7 s target
-- Error bars from propagating measurement uncertainty through the composite
+- Composite score: 40% D50 + 35% LAeq + 25% T20 penalty from 0.7 s target
+- Error bars from propagating measurement uncertainty through the composite (D50/T20 only — LAeq is a single measurement)
 - Name the top 2-3 and bottom 2-3 rooms
 
 Note: "Some adjacent rooms have overlapping error bars — we can't distinguish them statistically, but the overall spread is clear."
@@ -153,10 +154,11 @@ This is the payoff slide — the audience gets the answer to Slide 2's question.
 
 ## Slide 12 — Discussion & Conclusions (1.5 min)
 
-**Limitations** (2-3 bullets):
+**Limitations** (3-4 bullets):
 
 - Uncalibrated cardioid mic: absolute values carry bias, but internal comparison is valid
-- Single source type, not omnidirectional per ISO 3382-1
+- Mic SNR (76 dB) is adequate — room background noise (30-45 dB(A)) is the dynamic range bottleneck, which is why we use T20 over T30
+- LAeq from phone sensor (single measurement, uncalibrated) — relative ranking is reliable, absolute values may carry bias
 - Composite ranking is relative to these 9 rooms, not an absolute quality rating
 
 **Key findings** (2-3 bullets):

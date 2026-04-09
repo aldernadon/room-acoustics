@@ -3,5 +3,6 @@
     "f2": 20000,
     "out_ch": 1,
     "hvac": "on",
-    "notes": "very loud HVAC behind lower doors"
+    "notes": "very loud HVAC behind lower doors",
+    "LAeq": 43.5
 }

@@ -55,5 +55,6 @@ function plot_ir(h, params, fs, label, outFile, irLenSec)
 
     % --- Save ---
     exportgraphics(fig, outFile, 'ContentType', 'vector');
+    exportgraphics(fig, strrep(outFile, '.pdf', '.png'), 'Resolution', 300);
     close(fig);
 end

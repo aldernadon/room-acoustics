@@ -73,12 +73,13 @@ A pair of rooms is declared significantly different if the adjusted p-value < 0.
 
 ### 4.1 Parameter Selection
 
-Three acoustic dimensions are relevant to speech intelligibility in lecture halls:
+Four acoustic dimensions are relevant to speech intelligibility in lecture halls:
 
 | Dimension | Candidate parameters | Selected | Reason |
 |---|---|---|---|
 | Early clarity | D50, C50 | **D50** | D50 and C50 are monotonically related (C50 = 10 log10(D50/(1-D50))); D50 is more intuitive (proportion of early energy) |
-| Reverberation | T20, T30 | **T20** | T20 uses the -5 to -25 dB range of the EDC, which is less affected by noise floor limitations of the uncalibrated USB microphone. T30 (-5 to -35 dB) requires 10 dB more dynamic range. |
+| Reverberation | T20, T30 | **T20** | T20 uses the -5 to -25 dB range of the EDC, which is less affected by noise floor limitations of the USB microphone. T30 (-5 to -35 dB) requires 10 dB more dynamic range — marginal at back positions in noisier rooms given the mic's 76 dB SNR (see Section 9). |
+| Background noise | LAeq | **LAeq** | Speech-to-noise ratio is the strongest single predictor of intelligibility. ANSI S12.60 sets a 35 dB(A) limit for core learning spaces. Measured once per room via phone sensor. |
 | Centre time | Ts | **Dropped** | Ts is highly correlated with D50 (both measure early-vs-late energy balance). Including both would double-count the clarity dimension and add an extra source of uncertainty. |
 
 Using one representative per independent dimension avoids redundancy and keeps the composite interpretable.
@@ -87,10 +88,9 @@ Using one representative per independent dimension avoids redundancy and keeps t
 
 | Parameter | Weight | Justification |
 |---|---|---|
-| D50 | 60% | Primary speech intelligibility metric per ISO 3382. Directly measures the fraction of energy arriving within the first 50 ms. |
-| T20 | 40% | Reverberation affects speech clarity but is secondary to early energy balance. The penalty formulation (below) ensures both too-short and too-long reverberation are penalized. |
-
-The 60/40 split is approximately proportional to the original 3-parameter weights (D50: 50%, T30: 30%, Ts: 20%) after removing Ts and renormalizing (50/(50+30) = 62.5%, 30/(50+30) = 37.5%), rounded for simplicity.
+| D50 | 40% | Primary speech intelligibility metric per ISO 3382. Directly measures the fraction of energy arriving within the first 50 ms. |
+| LAeq | 35% | Background noise is comparable in importance to reverberation for speech intelligibility (ANSI S12.60, WHO Guidelines for Community Noise). Weighted slightly below D50 because it is a single uncalibrated measurement per room (phone sensor), carrying more measurement uncertainty than the 6-replicate acoustic parameters. |
+| T20 | 25% | Reverberation affects speech clarity but is secondary to early energy balance. The penalty formulation (below) ensures both too-short and too-long reverberation are penalized. |
 
 ### 4.3 Z-Score Normalization
 
@@ -109,9 +109,15 @@ where the mean and std are computed across the 9 room means.
 
 The absolute deviation from 0.7 s is negated so that rooms closer to the optimal have higher z-scores. The 0.7 s target is based on ISO 3382 and speech acoustics literature recommending 0.4-0.8 s for lecture halls, with 0.7 s as a central value.
 
+**LAeq** (lower is better):
+
+    z_LAeq_i = (-LAeq_i - mean(-LAeq)) / std(-LAeq)
+
+Negated so that quieter rooms (lower dB) receive higher z-scores.
+
 **Composite:**
 
-    C_i = 0.60 * z_D50_i + 0.40 * z_T20_i
+    C_i = 0.40 * z_D50_i + 0.25 * z_T20_i + 0.35 * z_LAeq_i
 
 ### 4.4 Interpretation
 
@@ -120,14 +126,17 @@ The composite score is **relative to the measured population** of 9 rooms. A sco
 ### 4.5 Limitations
 
 - **Weight sensitivity.** The ranking may change under different weight choices. Sensitivity analysis (varying weights) was not performed but could identify rooms whose ranking is robust vs. fragile.
-- **Two-parameter composite.** Omitting Ts means spatial information (energy arrival pattern) is only captured through D50's 50 ms boundary. A room with unusual reflection timing might be misjudged.
+- **Omitted parameters.** Omitting Ts means spatial information (energy arrival pattern) is only captured through D50's 50 ms boundary. A room with unusual reflection timing might be misjudged.
 - **Z-score normalization.** With only 9 rooms, the mean and std used for normalization are estimated from a small sample. Adding or removing a room changes all z-scores.
+- **LAeq measurement quality.** LAeq is a single phone-sensor measurement per room (uncalibrated, no replicates). It cannot be included in the blocked ANOVA, and its absolute accuracy depends on the phone's microphone calibration. However, the relative ranking of rooms by noise level is likely correct since the same phone was used throughout.
 
 ## 5. Composite Score Uncertainty
 
 ### 5.1 Approach: Linear Error Propagation
 
-The composite score is a linear function of the room means D50_i and T20_i (after fixing the z-score normalization constants as population parameters). The variance of the composite is computed by propagating the estimation uncertainty of the room means through the composite formula.
+The composite score is a linear function of the room means D50_i, T20_i, and LAeq_i (after fixing the z-score normalization constants as population parameters). The variance of the composite is computed by propagating the estimation uncertainty of the room means through the composite formula.
+
+**Note on LAeq:** LAeq is a single measurement per room with no within-room replicates, so it contributes zero estimation variance to the composite CI. The reported confidence intervals reflect only D50 and T20 uncertainty from the blocked design. This means the CIs are underestimates of the true composite uncertainty — the LAeq component carries measurement error that is not quantified.
 
 ### 5.2 Covariance Matrix from Blocked Model
 
@@ -253,10 +262,49 @@ The following target ranges are shown as shaded bands on the parameter compariso
 | C80 | -2 to 5 dB | ISO 3382-1 | Preferred range for music; included for completeness |
 | D80 | — | — | No established single-number target in the literature |
 | Ts | — | — | Target not shown; Ts < 100 ms is a rough guideline but parameter was excluded from composite |
+| LAeq | <= 35 dB(A) | ANSI S12.60, WHO | Maximum background noise for core learning spaces |
 
 These ranges are **absolute** benchmarks, unlike the composite score which is relative. They allow readers to judge whether rooms meet established standards, independent of how they compare to each other.
 
-## 8. Summary of Key Parameters
+## 8. Microphone Dynamic Range
+
+### 8.1 Specifications
+
+The Jounivo JV-601 USB condenser microphone has:
+- **Sensitivity:** -38 dB +/- 2 dB (re 1V/Pa)
+- **SNR:** 76 dB (A-weighted)
+- **Equivalent input noise (EIN):** ~18 dB(A) (derived: 94 dB SPL reference - 76 dB SNR)
+
+### 8.2 Implications for Measurement Dynamic Range
+
+The mic's self-noise floor of ~18 dB(A) is well below the background noise in all 9 rooms (30.5-45.3 dB(A)). Therefore, **room background noise is the limiting factor for measurement dynamic range**, not the microphone. A quieter measurement mic would not improve results because the rooms themselves set the noise floor.
+
+The effective dynamic range available for IR analysis depends on the source level at each receiver position minus the room's background noise:
+
+| Position | Typical direct SPL | Effective SNR (quiet room, 30 dB) | Effective SNR (noisy room, 45 dB) |
+|---|---|---|---|
+| Front (~2 m) | ~75-85 dB SPL | 45-55 dB | 30-40 dB |
+| Mid (~5 m) | ~65-75 dB SPL | 35-45 dB | 20-30 dB |
+| Back (~10 m) | ~60-70 dB SPL | 30-40 dB | 15-25 dB |
+
+### 8.3 Impact on T20 vs T30 Choice
+
+T20 requires the EDC to be reliable from -5 dB to -25 dB (a 20 dB window). T30 requires -5 dB to -35 dB (a 30 dB window). The EDC is derived from the IR, so its usable range is bounded by the effective SNR.
+
+- At **front positions in quiet rooms** (SNR ~50 dB): both T20 and T30 are reliable.
+- At **back positions in noisy rooms** (SNR ~20 dB): T20 is marginal, T30 is unreliable — the noise floor contaminates the -35 dB region of the EDC.
+
+This directly validates the choice of T20 over T30 as the reverberation metric. T30 values extracted from low-SNR measurements would show poor R-squared and underestimate reverberation time (the noise floor makes the EDC appear to flatten early).
+
+### 8.4 Connection to R-Squared Quality Check
+
+The measurements where effective SNR is marginal for T20 are precisely those expected to show R-squared < 0.99 — the noise floor encroaches on the -25 dB end of the regression, introducing curvature. The R-squared check (Section 6) therefore functions as an indirect dynamic range adequacy test: it flags the measurements where the mic + room noise combination is insufficient for reliable T20 extraction.
+
+### 8.5 Sensitivity Tolerance
+
+The +/- 2 dB sensitivity tolerance is a unit-to-unit manufacturing spread. Since the same physical microphone was used for all 54 measurements, this tolerance introduces no error in the relative comparison across rooms. It does mean that the absolute SPL of the impulse responses is unknown to within +/- 2 dB, but absolute calibration is not required for ISO 3382 parameter extraction (which depends on energy ratios and decay rates, not absolute levels).
+
+## 9. Summary of Key Parameters
 
 | Parameter | Value | Justification |
 |---|---|---|
@@ -264,10 +312,12 @@ These ranges are **absolute** benchmarks, unlike the composite score which is re
 | ANOVA model | Two-way additive (room + position) | Exploits the blocked design; removes systematic position variance from error |
 | Error df | 40 | (9 rooms - 1) x (6 positions - 1) |
 | Post-hoc method | Tukey HSD (via Tukey-Kramer) | Controls family-wise error across all 36 room pairs |
-| Composite parameters | D50 (60%), T20 penalty from 0.7 s (40%) | One representative per independent acoustic dimension |
+| Composite parameters | D50 (40%), LAeq (35%), T20 penalty from 0.7 s (25%) | One representative per independent acoustic dimension, plus background noise |
 | T20 optimal target | 0.7 s | Central value of 0.4-0.8 s range for speech in lecture halls |
-| CI method | Linear error propagation with cross-covariance from blocked-model residuals | Accounts for D50-T20 correlation; uses pooled error with df = 40 |
+| LAeq target | <= 35 dB(A) | ANSI S12.60 limit for core learning spaces |
+| CI method | Linear error propagation with cross-covariance from blocked-model residuals | Accounts for D50-T20 correlation; uses pooled error with df = 40. LAeq contributes no CI (single measurement). |
 | R-squared threshold | 0.99 | Flags T20 measurements where the EDC is not well-approximated by a single exponential decay |
+| Mic SNR | 76 dB (EIN ~18 dB(A)) | Room noise (30-45 dB(A)) is the dynamic range bottleneck, not mic self-noise |
 
 ## References
 
@@ -277,3 +327,5 @@ These ranges are **absolute** benchmarks, unlike the composite score which is re
 - Chu, W.T. (1978). "Comparison of reverberation measurements using Schroeder's impulse method and decay-curve averaging method." JASA 63(5).
 - Farina, A. (2000). "Simultaneous measurement of impulse response and distortion with a swept-sine technique." 108th AES Convention.
 - Rakerd, B. et al. (2018). "Assessing the Acoustic Characteristics of Rooms: A Tutorial With Examples." Perspectives of the ASHA Special Interest Groups 3(19), 8-24.
+- ANSI/ASA S12.60-2010, Acoustical Performance Criteria, Design Requirements, and Guidelines for Schools, Part 1: Permanent Schools.
+- WHO (1999). Guidelines for Community Noise. World Health Organization, Geneva.

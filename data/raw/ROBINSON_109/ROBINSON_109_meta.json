@@ -3,5 +3,6 @@
     "f2": 20000,
     "out_ch": 1,
     "hvac": "on",
-    "notes": "Periodic train noise"
+    "notes": "Periodic train noise",
+    "LAeq": 35
 }

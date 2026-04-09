@@ -3,5 +3,6 @@
     "f2": 20000,
     "out_ch": 1,
     "hvac": "off",
-    "notes": "loud projector on"
+    "notes": "loud projector on",
+    "LAeq": 40.5
 }

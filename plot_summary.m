@@ -211,5 +211,6 @@ function plot_summary(allParams, allIRs, fs, roomName, outFile, irLenSec) %#ok<I
             'FontWeight', 'bold', 'FontSize', 13);
 
     exportgraphics(fig, outFile, 'ContentType', 'vector');
+    exportgraphics(fig, strrep(outFile, '.pdf', '.png'), 'Resolution', 300);
     close(fig);
 end

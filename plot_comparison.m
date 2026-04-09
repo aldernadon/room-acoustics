@@ -30,7 +30,7 @@ function plot_comparison(roomStats, anovaResults, rawData, rankOrder, ...
     cmap = lines(nRooms);
 
     % ================================================================
-    %  FIGURE 1: Parameter dot-and-whisker (2 x 4 grid, 7 panels)
+    %  FIGURE 1: Parameter dot-and-whisker (2 x 4 grid, 8 panels)
     % ================================================================
     fig1 = figure('Position', [50 50 1500 900], 'Visible', 'off');
 
@@ -133,37 +133,69 @@ function plot_comparison(roomStats, anovaResults, rawData, rankOrder, ...
         grid on;
     end
 
-    % 8th panel: notes
+    % 8th panel: LAeq (background noise) — single value per room
     subplot(2, 4, 8);
-    axis off;
-    xlim([0 1]); ylim([0 1]);
-    text(0.5, 0.70, 'Rooms sorted by composite rank', ...
-         'HorizontalAlignment', 'center', 'FontSize', 10, ...
-         'FontWeight', 'bold');
-    text(0.5, 0.60, '(best \rightarrow worst, left \rightarrow right)', ...
-         'HorizontalAlignment', 'center', 'FontSize', 9, ...
-         'Interpreter', 'tex');
-    text(0.5, 0.50, sprintf('Error bars: 95%% CI   |   n = %d per room', ...
-         roomStats(1).n), ...
-         'HorizontalAlignment', 'center', 'FontSize', 9);
-    text(0.5, 0.40, '*** = ANOVA significant at \alpha = 0.05', ...
-         'HorizontalAlignment', 'center', 'FontSize', 9, ...
-         'Interpreter', 'tex');
+    hold on;
+
+    LAeq_vals = [roomStats(rankOrder).LAeq];
+    ylo_n = min(LAeq_vals);
+    yhi_n = max(LAeq_vals);
+    ypad_n = 0.25 * (yhi_n - ylo_n + eps);
+
+    % Target band: <= 35 dB(A) per ANSI S12.60
+    fill([0.3 nRooms+0.7 nRooms+0.7 0.3], ...
+         [ylo_n-ypad_n ylo_n-ypad_n 35 35], ...
+         bandColor, 'EdgeColor', 'none', 'FaceAlpha', 0.45, ...
+         'HandleVisibility', 'off');
+
+    for ki = 1:nRooms
+        plot(ki, LAeq_vals(ki), 'o', 'MarkerSize', 7, ...
+             'MarkerFaceColor', cmap(ki,:), 'MarkerEdgeColor', 'k', ...
+             'LineWidth', 0.5, 'HandleVisibility', 'off');
+    end
+
+    ylim([ylo_n - ypad_n, yhi_n + ypad_n]);
+
+    yl_n = ylim;
+    text(nRooms + 0.5, yl_n(2) - 0.06 * diff(yl_n), ...
+         'Target: \leq 35 dB(A)', ...
+         'FontSize', 6.5, 'HorizontalAlignment', 'right', ...
+         'VerticalAlignment', 'middle', ...
+         'BackgroundColor', bandColor, 'EdgeColor', [0.5 0.7 0.5], ...
+         'Margin', 2, 'Interpreter', 'tex');
+
+    title('L_{Aeq} [dB(A)]    (background noise)', ...
+          'FontSize', 9, 'Interpreter', 'tex');
+
+    set(gca, 'XTick', 1:nRooms, ...
+             'XTickLabel', sortedNames, ...
+             'XTickLabelRotation', 45, ...
+             'FontSize', 7, ...
+             'TickLabelInterpreter', 'none');
+    xlim([0.3, nRooms + 0.7]);
+    grid on;
 
     sgtitle('ISO 3382 Parameters by Room', 'FontWeight', 'bold', 'FontSize', 13);
 
     exportgraphics(fig1, fullfile(outDir, 'comparison_parameters.pdf'), ...
                    'ContentType', 'vector');
+    exportgraphics(fig1, fullfile(outDir, 'comparison_parameters.png'), ...
+                   'Resolution', 300);
     close(fig1);
-    fprintf('  Saved: comparison_parameters.pdf\n');
+    fprintf('  Saved: comparison_parameters.pdf/.png\n');
 
     % ================================================================
     %  FIGURE 2: Z-score heatmap
     % ================================================================
     fig2 = figure('Position', [50 50 950 550], 'Visible', 'off');
 
-    % Build z-score matrix (rooms x params) from room means
-    Z = zeros(nRooms, nParams);
+    % Build z-score matrix (rooms x params+LAeq) from room means
+    hmLabels = [rawData.labels, {'LAeq'}];
+    hmPlain  = [plainNames, {'LAeq [dB(A)]'}];
+    hmScale  = [dispScale, 1];
+    nHmCols  = numel(hmLabels);
+
+    Z = zeros(nRooms, nHmCols);
     for pi = 1:nParams
         roomMeans = arrayfun(@(r) r.([rawData.labels{pi}, '_mean']), roomStats);
         s = std(roomMeans);
@@ -172,6 +204,14 @@ function plot_comparison(roomStats, anovaResults, rawData, rankOrder, ...
         else
             Z(:, pi) = (roomMeans - mean(roomMeans)) / s;
         end
+    end
+    % LAeq column
+    LAeq_all = [roomStats.LAeq];
+    s = std(LAeq_all);
+    if s < eps
+        Z(:, nHmCols) = 0;
+    else
+        Z(:, nHmCols) = (LAeq_all - mean(LAeq_all)) / s;
     end
 
     % Reorder rows: rank 1 at top
@@ -188,8 +228,12 @@ function plot_comparison(roomStats, anovaResults, rawData, rankOrder, ...
     % Annotate each cell with the actual parameter value
     for ki = 1:nRooms
         ri = rankOrder(ki);
-        for pi = 1:nParams
-            val = roomStats(ri).([rawData.labels{pi}, '_mean']) * dispScale(pi);
+        for pi = 1:nHmCols
+            if pi <= nParams
+                val = roomStats(ri).([rawData.labels{pi}, '_mean']) * hmScale(pi);
+            else
+                val = roomStats(ri).LAeq;
+            end
             if abs(val) >= 100
                 txt = sprintf('%.0f', val);
             elseif abs(val) >= 10
@@ -208,16 +252,18 @@ function plot_comparison(roomStats, anovaResults, rawData, rankOrder, ...
         end
     end
 
-    set(gca, 'XTick', 1:nParams, 'XTickLabel', plainNames, ...
-             'YTick', 1:nRooms,  'YTickLabel', sortedNames, ...
+    set(gca, 'XTick', 1:nHmCols, 'XTickLabel', hmPlain, ...
+             'YTick', 1:nRooms,   'YTickLabel', sortedNames, ...
              'TickLabelInterpreter', 'none', 'FontSize', 8);
     title('Room Acoustic Parameters — Z-Score Heatmap  (ranked top \rightarrow bottom)', ...
           'FontWeight', 'bold', 'Interpreter', 'tex');
 
     exportgraphics(fig2, fullfile(outDir, 'comparison_heatmap.pdf'), ...
                    'ContentType', 'vector');
+    exportgraphics(fig2, fullfile(outDir, 'comparison_heatmap.png'), ...
+                   'Resolution', 300);
     close(fig2);
-    fprintf('  Saved: comparison_heatmap.pdf\n');
+    fprintf('  Saved: comparison_heatmap.pdf/.png\n');
 
     % ================================================================
     %  FIGURE 3: Composite ranking bar chart
@@ -241,8 +287,8 @@ function plot_comparison(roomStats, anovaResults, rawData, rankOrder, ...
              'FontSize', 9);
     xlabel('Composite Score', 'FontSize', 10);
     title(sprintf(['Speech-Quality Ranking   ' ...
-                   '(D_{50} = %.0f%%,  T_{20} penalty = %.0f%%)'], ...
-                  weights.D50*100, weights.T20*100), ...
+                   '(D_{50} = %.0f%%,  T_{20} penalty = %.0f%%,  L_{Aeq} = %.0f%%)'], ...
+                  weights.D50*100, weights.T20*100, weights.LAeq*100), ...
           'FontWeight', 'bold', 'Interpreter', 'tex');
     grid on;
     hold on;
@@ -261,8 +307,8 @@ function plot_comparison(roomStats, anovaResults, rawData, rankOrder, ...
     xpad = max(abs(scores)) * 0.05 + 0.02;
     for ki = 1:nRooms
         ri = rankOrder(ki);
-        label = sprintf('D50:%+.1f  T20:%+.1f', ...
-                roomStats(ri).z_D50, roomStats(ri).z_T20);
+        label = sprintf('D50:%+.1f  T20:%+.1f  LAeq:%+.1f', ...
+                roomStats(ri).z_D50, roomStats(ri).z_T20, roomStats(ri).z_LAeq);
 
         if scores(ki) >= 0
             xpos = scores(ki) + ci_vals(ki) + xpad;
@@ -287,8 +333,10 @@ function plot_comparison(roomStats, anovaResults, rawData, rankOrder, ...
 
     exportgraphics(fig3, fullfile(outDir, 'comparison_ranking.pdf'), ...
                    'ContentType', 'vector');
+    exportgraphics(fig3, fullfile(outDir, 'comparison_ranking.png'), ...
+                   'Resolution', 300);
     close(fig3);
-    fprintf('  Saved: comparison_ranking.pdf\n');
+    fprintf('  Saved: comparison_ranking.pdf/.png\n');
 end
 
 
